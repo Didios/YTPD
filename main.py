@@ -1,19 +1,16 @@
-import os
 from tkinter import Tk, Entry, Button, StringVar, Label, Frame, IntVar, BooleanVar, Checkbutton, Canvas
 from tkinter.ttk import Combobox, Progressbar
 from tkinter.filedialog import askdirectory
 from tkinter.messagebox import showerror, showinfo, askyesno
 
 from threading import Thread
-from os import path, rename
+from os import path
 
-import pytube.exceptions
 import validators
-
 import re
 from pytube import Playlist, YouTube
-import pytube.extract
 
+import music_tag
 import urllib.request
 import io
 from PIL import ImageTk, Image
@@ -51,6 +48,7 @@ class YTPD:
         self.thumbnail_canvas = None
         self.thumbnail_data = None
         self.thumbnail_image = None
+        self.thumbnail_bytes = None
         self.title = StringVar()
 
         self.__set_main_frame()
@@ -153,7 +151,8 @@ class YTPD:
     def show_thumbnail(self, video):
         raw_data = urllib.request.urlopen(video.thumbnail_url).read()
 
-        self.thumbnail_data = Image.open(io.BytesIO(raw_data)).resize(self.THUMBNAIL_SIZE)
+        self.thumbnail_bytes = io.BytesIO(raw_data)
+        self.thumbnail_data = Image.open(self.thumbnail_bytes).resize(self.THUMBNAIL_SIZE)
         self.thumbnail_image = ImageTk.PhotoImage(self.thumbnail_data)
 
         self.thumbnail_canvas.delete('all')
@@ -210,7 +209,7 @@ class YTPD:
 
     def __download_content(self, url, output, extension):
         video = YouTube(url)
-        filename = re.sub(r'[^\w\-_\. ]', '_', f'{video.title}.{extension}')
+        filename = re.sub(r'[^\w\-_\. ]', '', f'{video.title}.{extension}')
         filepath = path.join(output, filename)
 
         create = True
@@ -221,13 +220,26 @@ class YTPD:
         self.__set_video_info(video)
 
         if create:
+            # choose video stream
             if extension == 'mp3':
                 videofile = video.streams.filter(only_audio=True).first()
             else:
                 videofile = video.streams.filter(file_extension=extension).first()
 
+            # download
             videofile.download(output_path=output, filename=filename)
 
+            # add metadata
+            file = path.join(output, filename)
+            if extension == 'mp3':
+                artwork_path = resource_path(path.join('temp', 'artwork.jpeg'))
+
+                self.thumbnail_data.thumbnail((500, 500))
+                self.thumbnail_data.save(artwork_path)
+
+                f = music_tag.load_file(file)
+                f['artwork'] = open(artwork_path, 'rb').read()
+                f.save()
 
     def download(self):
         # check folder
@@ -264,4 +276,5 @@ class YTPD:
 if __name__ == '__main__':
     app = YTPD()
     app.launch()
-
+    # https://www.youtube.com/watch?v=2rwPDfmcCrY&ab_channel=JonathanYoung //TEST
+    # https://www.youtube.com/watch?v=Si3IJ218Chk&ab_channel=JonathanYoung
